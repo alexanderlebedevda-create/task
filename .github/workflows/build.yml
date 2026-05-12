@@ -1,0 +1,74 @@
+name: Build Windows Installer
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pyinstaller
+
+      - name: Build EXE
+        run: |
+          cd src
+          pyinstaller --onefile --windowed --name "DaVinci Task Manager" app.py
+
+      - name: Download and install Inno Setup
+        run: |
+          curl -L -o innosetup.exe https://jrsoftware.org/download.php/is.exe
+          Start-Process -FilePath innosetup.exe -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait
+        shell: pwsh
+
+      - name: Create Inno Setup script
+        shell: pwsh
+        run: |
+          $iss = '[Setup]
+          AppName=DaVinci Task Manager
+          AppVersion=1.0
+          DefaultDirName={autopf}\DaVinci Task Manager
+          DefaultGroupName=DaVinci Task Manager
+          OutputDir=installer
+          OutputBaseFilename=DaVinci-Task-Manager-Setup
+          Compression=lzma
+          SolidCompression=yes
+          WizardStyle=modern
+          PrivilegesRequired=lowest
+
+          [Languages]
+          Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
+
+          [Tasks]
+          Name: "desktopicon"; Description: "Создать значок на рабочем столе"; GroupDescription: "Дополнительные задачи:"; Flags: checked
+
+          [Files]
+          Source: "src\dist\DaVinci Task Manager.exe"; DestDir: "{app}"; Flags: ignoreversion
+
+          [Icons]
+          Name: "{group}\DaVinci Task Manager"; Filename: "{app}\DaVinci Task Manager.exe"
+          Name: "{group}\Удалить DaVinci Task Manager"; Filename: "{uninstallexe}"
+          Name: "{autodesktop}\DaVinci Task Manager"; Filename: "{app}\DaVinci Task Manager.exe"; Tasks: desktopicon
+
+          [Run]
+          Filename: "{app}\DaVinci Task Manager.exe"; Description: "Запустить приложение"; Flags: nowait postinstall skipifsilent'
+          $iss | Out-File -FilePath setup.iss -Encoding UTF8
+
+      - name: Compile installer
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss'
+        shell: pwsh
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DaVinci-Task-Manager-Setup
+          path: installer/DaVinci-Task-Manager-Setup.exe
